@@ -1,0 +1,123 @@
+variables:
+  sut_ip: "10.99.104.251"
+  reference: "test.msg"
+
+cache:
+  paths:
+    - reports/
+
+.normal: &normal
+  before_script:
+    - chmod a+x *.sh *.py || true
+    - export VERSION=$(egrep -o 'Rev\:\ ([0-9].){2}[0-9]+' README.md | awk '{print $NF}')
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
+  after_script:
+    - docker logout $CI_REGISTRY
+  tags:
+    - IPT-K8S-NODE2
+
+.tool: &tool
+  before_script:
+    - apk add --update curl git && rm -rf /var/cache/apk/*
+    - git clone $TOOLS_PROJECT
+  tags:
+    - IPT-K8S-NODE2
+
+stages:
+  - lintcheck
+  - build
+  - pushImage
+  - deployment
+  - cleanup
+
+codeReview:Shell:
+  <<: *normal
+  stage: lintcheck
+  image: registry.ipt-gitlab:8081/sit-develop-tool/shellcheck:$SHCHECK_VER
+  before_script:
+    - echo "Starting Shell coding style verification."
+  script:
+    - find . -iname "*.sh" | xargs shellcheck -s bash --color=always || true
+  after_script:
+    - echo "Finish coding style verification."
+  tags:
+    - IPT-K8S-NODE2
+  only:
+    - master
+    - pushes
+  except:
+    - schedules
+
+codeReview:Python:
+  <<: *normal
+  stage: lintcheck
+  image: registry.ipt-gitlab:8081/sit-develop-tool/sitpythonlinter:$PYLINT_VER
+  before_script:
+    - echo "Starting Python coding style verification."
+  script:
+    - find . -iname '*.py' | xargs pylint --rcfile=/home/app/pylintrc || true
+  after_script:
+    - echo "Finish coding style verification."
+  tags:
+    - IPT-K8S-NODE2
+  only:
+    - master
+    - pushes
+  except:
+    - schedules
+
+prepareImageRedistool:
+  <<: *normal
+  stage: build
+  script:
+    - docker build --no-cache -t ${CI_REGISTRY_IMAGE}/redis-tool:$VERSION ./tools
+  tags:
+    - IPT-K8S-NODE2
+  only:
+    - master
+    - pushes
+  except:
+    - schedules
+
+imagePushRedistool:
+  <<: *normal
+  stage: pushImage
+  script:
+    - docker push ${CI_REGISTRY_IMAGE}/redis-tool:$VERSION
+  tags:
+    - IPT-K8S-NODE2
+  only:
+    - master
+    - pushes
+  except:
+    - schedules
+
+k8sdeployRedisService:
+  <<: *normal
+  stage: deployment
+  image: registry.ipt-gitlab:8081/sit-develop-tool/tool-kubectl-deployment:$KUBE_VER
+  script:
+    - |
+        sed -i "s,__VERSION__,${VERSION},g" crond/cronjobs.yaml
+        kubectl apply -f deployments/ --record
+        kubectl apply -f crond/ --record
+
+        sleep 30
+        kubectl get po -o wide -n kube-ops | grep redis
+        kubectl get cronjob -o wide -n kube-ops | grep redis
+  tags:
+    - IPT-K8S-NODE2
+  only:
+    - master
+    - pushes
+  except:
+    - schedules
+
+cleanEnv:
+  <<: *tool
+  stage: cleanup
+  script:
+    - sh tool-gitlab-deployment/pipeline_clean.sh
+  tags:
+    - IPT-K8S-NODE2
+  when: always

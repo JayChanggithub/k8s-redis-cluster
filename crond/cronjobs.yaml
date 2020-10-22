@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-backup
+  namespace: kube-ops
+spec:
+  capacity:
+    # only suitable for production
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  glusterfs:
+    endpoints: "gluster-cluster"
+    path: "redis_backup"
+    readOnly: false
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: redis-backup
+  namespace: kube-ops
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      # only suitable for production
+      storage: 500Gi
+      
+---
+
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: redis-backup
+  namespace: kube-ops
+spec:
+  schedule: "0 */1 * * *"
+  jobTemplate:
+    spec:
+      # backoffLimit: 5
+      # activeDeadlineSeconds: 100
+      # concurrencyPolicy: Replace
+      template:
+        spec:
+          containers:
+          - name: redis-backup
+            image: registry.ipt-gitlab:8081/sit-develop-tool/cluster-nosql-redis/redis-tool:__VERSION__
+            args:
+            - /bin/bash
+            - -c
+            - "python redis-tool.py -n kube-ops -st cluster -m dump -p 6379 && bash redis_deletebefore.sh"
+            volumeMounts:
+            - mountPath: /usr/src/reports
+              name: redis-backup
+            - mountPath: /etc/localtime
+              name: tz-config
+          restartPolicy: OnFailure
+          # hostNetwork: true
+          volumes:
+          - name: tz-config
+            hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+          - name: redis-backup
+            persistentVolumeClaim:
+              claimName: redis-backup
+          imagePullSecrets:
+          - name: gitlab-registry

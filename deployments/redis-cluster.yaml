@@ -1,0 +1,304 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: redis-cluster-configmap
+  namespace: kube-ops
+data:
+  redis-cluster-recovery.sh: |
+    #!/bin/bash
+    set -e
+    REDIS_NODES_FILE="/var/lib/redis/nodes.conf"
+    for redis_node_ip in "$@"
+    do
+        redis_node_id=`redis-cli -h $redis_node_ip -p 6379 cluster nodes | grep myself | awk '{print $1}'`
+        sed -i.bak -e "/^$redis_node_id/ s/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}/${redis_node_ip}/" ${REDIS_NODES_FILE}
+    done
+  update-node.sh: |
+    #!/bin/bash
+    REDIS_NODES="/var/lib/redis/nodes.conf"
+    if [ -f $REDIS_NODES ]; then
+        if [ -z "$POD_IP" ]; then
+            echo "Unable to determine Pod IP address..."
+            exit 1
+        fi
+    fi
+    sed -i -e "/myself/ s/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}/${POD_IP}/" ${REDIS_NODES}
+    exec "$@"
+  redis.conf: |+
+    # general configuraion
+    dir /var/lib/redis
+    port 6379
+    protected-mode no
+    aof-use-rdb-preamble yes
+    logfile "/var/lib/redis/redis.log"
+
+    # cluster configuraion
+    cluster-enabled yes
+    cluster-migration-barrier 1
+    cluster-config-file /var/lib/redis/nodes.conf
+    cluster-node-timeout 5000
+    cluster-require-full-coverage no
+
+    # RDB
+    save 900 1
+    save 300 10
+    save 60 10000
+    rdbcompression yes
+    dbfilename dump.rdb
+
+    # AOF
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    appendonly yes
+
+---
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: redis-fast
+  namespace: kube-ops
+parameters:
+  volumetype: "replicate:6"
+provisioner: kubernetes.io/glusterfs
+reclaimPolicy: Delete
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: kube-ops
+  labels:
+    app: redis
+spec:
+  ports:
+  - name: redis-port
+    port: 6379
+  clusterIP: None
+  selector:
+    app: redis
+    appCluster: redis-cluster
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-access-service
+  namespace: kube-ops
+  labels:
+    app: redis
+spec:
+  ports:
+  - name: redis-port
+    protocol: "TCP"
+    port: 6379
+    targetPort: 6379
+  selector:
+    app: redis
+    appCluster: redis-cluster
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data1
+  namespace: kube-ops
+spec:
+  storageClassName: redis-fast
+  capacity:
+    # best fit on production, validation env 200m
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  glusterfs:
+    endpoints: "gluster-cluster"
+    path: "redis-data1"
+    readOnly: false
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data2
+  namespace: kube-ops
+spec:
+  storageClassName: redis-fast
+  capacity:
+    # best fit on production
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  glusterfs:
+    endpoints: "gluster-cluster"
+    path: "redis-data2"
+    readOnly: false
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data3
+  namespace: kube-ops
+spec:
+  storageClassName: redis-fast
+  capacity:
+    # best fit on production
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  glusterfs:
+    endpoints: "gluster-cluster"
+    path: "redis-data3"
+    readOnly: false
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data4
+  namespace: kube-ops
+spec:
+  storageClassName: redis-fast
+  capacity:
+    # best fit on production
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  glusterfs:
+    endpoints: "gluster-cluster"
+    path: "redis-data4"
+    readOnly: false
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data5
+  namespace: kube-ops
+spec:
+  storageClassName: redis-fast
+  capacity:
+    # best fit on production
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  glusterfs:
+    endpoints: "gluster-cluster"
+    path: "redis-data5"
+    readOnly: false
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data6
+  namespace: kube-ops
+spec:
+  storageClassName: redis-fast
+  capacity:
+    # best fit on production
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  glusterfs:
+    endpoints: "gluster-cluster"
+    path: "redis-data6"
+    readOnly: false
+
+---
+
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: redis-app
+  namespace: kube-ops
+spec:
+  serviceName: "redis-service"
+  replicas: 6
+  template:
+    metadata:
+      labels:
+        app: redis
+        appCluster: redis-cluster
+    spec:
+      terminationGracePeriodSeconds: 20
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - redis
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: redis
+        image: "registry.ipt-gitlab:8081/sit-develop-tool/cluster-nosql-redis:1.0.0"
+        command: [ "redis-server", "/etc/redis/redis.conf" ]
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        # best fit on production, cpu 100m memory 100Mi
+        resources:
+          requests:
+            cpu: "4000m"
+            memory: "15Gi"
+        ports:
+            - name: redis
+              containerPort: 6379
+              protocol: "TCP"
+            - name: cluster
+              containerPort: 16379
+              protocol: "TCP"
+        volumeMounts:
+          - name: "redis-conf"
+            mountPath: "/etc/redis"
+          - name: "redis-data"
+            mountPath: "/var/lib/redis"
+          - name: tz-config
+            mountPath: /etc/localtime
+      volumes:
+      - name: "redis-conf"
+        configMap:
+          name: "redis-cluster-configmap"
+          defaultMode: 0755
+          items:
+            - key: "redis.conf"
+              path: "redis.conf"
+            - key: "update-node.sh"
+              path: "update-node.sh"
+            - key: "redis-cluster-recovery.sh"
+              path: "redis-cluster-recovery.sh"
+      - name: tz-config
+        hostPath:
+          path: /usr/share/zoneinfo/Asia/Shanghai
+      imagePullSecrets:
+      - name: gitlab-registry
+
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+      annotations:
+         volume.beta.kubernetes.io/storage-class: "redis-fast"
+    spec:
+      accessModes:
+      - ReadWriteMany
+      resources:
+        requests:
+          # best fit on production
+          storage: 100Gi
