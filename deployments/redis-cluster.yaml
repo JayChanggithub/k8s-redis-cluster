@@ -51,6 +51,10 @@ data:
     appendfsync everysec
     appendonly yes
 
+    # optimize memory policy
+    maxmemory 10GB
+    maxmemory-policy allkeys-lru
+
 ---
 
 apiVersion: storage.k8s.io/v1
@@ -76,6 +80,8 @@ spec:
   ports:
   - name: redis-port
     port: 6379
+  - name: prom
+    port: 9121
   clusterIP: None
   selector:
     app: redis
@@ -97,6 +103,10 @@ spec:
     protocol: "TCP"
     port: 6379
     targetPort: 6379
+  - name: prom
+    protocol: "TCP"
+    port: 9121
+    targetPort: 9121
   selector:
     app: redis
     appCluster: redis-cluster
@@ -227,6 +237,9 @@ spec:
   replicas: 6
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
       labels:
         app: redis
         appCluster: redis-cluster
@@ -246,25 +259,13 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
       - name: redis
-        image: "registry.ipt-gitlab:8081/sit-develop-tool/cluster-nosql-redis:1.0.0"
+        image: registry.ipt-gitlab:8081/sit-develop-tool/cluster-nosql-redis:1.0.0
         command: [ "redis-server", "/etc/redis/redis.conf" ]
         env:
         - name: POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        # best fit on production, cpu 100m memory 100Mi
-        resources:
-          requests:
-            cpu: "4000m"
-            memory: "15Gi"
-        ports:
-            - name: redis
-              containerPort: 6379
-              protocol: "TCP"
-            - name: cluster
-              containerPort: 16379
-              protocol: "TCP"
         volumeMounts:
           - name: "redis-conf"
             mountPath: "/etc/redis"
@@ -272,6 +273,30 @@ spec:
             mountPath: "/var/lib/redis"
           - name: tz-config
             mountPath: /etc/localtime
+        ports:
+            - name: redis
+              containerPort: 6379
+              protocol: "TCP"
+            - name: cluster
+              containerPort: 16379
+              protocol: "TCP"
+            # - name: redis-exporter
+            #  containerPort: 9121
+            #  protocol: "TCP"
+        # best fit on production, cpu 100m memory 100Mi
+        resources:
+          requests:
+            cpu: "4000m"
+            memory: "15Gi"
+      - name: redis-exporter
+        image: registry.ipt-gitlab:8081/sit-develop-tool/cluster-nosql-redis/redis_exporter:1.0.0
+        volumeMounts:
+          - name: tz-config
+            mountPath: /etc/localtime
+        ports:
+            - name: redis-exporter
+              containerPort: 9121
+              protocol: "TCP"
       volumes:
       - name: "redis-conf"
         configMap:
