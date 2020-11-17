@@ -72,10 +72,13 @@ reclaimPolicy: Delete
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis-service
+  name: redis-headless
   namespace: kube-ops
   labels:
     app: redis
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
 spec:
   ports:
   - name: redis-port
@@ -87,29 +90,6 @@ spec:
     app: redis
     appCluster: redis-cluster
 
-
----
-
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis-access-service
-  namespace: kube-ops
-  labels:
-    app: redis
-spec:
-  ports:
-  - name: redis-port
-    protocol: "TCP"
-    port: 6379
-    targetPort: 6379
-  - name: prom
-    protocol: "TCP"
-    port: 9121
-    targetPort: 9121
-  selector:
-    app: redis
-    appCluster: redis-cluster
 
 ---
 
@@ -233,7 +213,7 @@ metadata:
   name: redis-app
   namespace: kube-ops
 spec:
-  serviceName: "redis-service"
+  serviceName: "redis-headless"
   replicas: 6
   template:
     metadata:
@@ -290,6 +270,7 @@ spec:
             memory: "15Gi"
       - name: redis-exporter
         image: registry.ipt-gitlab:8081/sit-develop-tool/cluster-nosql-redis/redis_exporter:1.0.0
+        args: [ "-redis.addr", "redis://127.0.0.1:6379" ]
         volumeMounts:
           - name: tz-config
             mountPath: /etc/localtime

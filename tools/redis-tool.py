@@ -54,27 +54,27 @@ class redis_cluster(object):
         self.sync_check = '/usr/local/redis-full-check/redis-full-check'
         self.redis_fqdn = [
             {
-                'host': 'redis-app-0.redis-service.{0}.svc.cluster.local'.format(ns),
+                'host': 'redis-app-0.redis-headless.{0}.svc.cluster.local'.format(ns),
                 'port': port
             },
             {
-                'host': 'redis-app-1.redis-service.{0}.svc.cluster.local'.format(ns),
+                'host': 'redis-app-1.redis-headless.{0}.svc.cluster.local'.format(ns),
                 'port': port
             },
             {
-                'host': 'redis-app-2.redis-service.{0}.svc.cluster.local'.format(ns),
+                'host': 'redis-app-2.redis-headless.{0}.svc.cluster.local'.format(ns),
                 'port': port
             },
             {
-                'host': 'redis-app-3.redis-service.{0}.svc.cluster.local'.format(ns),
+                'host': 'redis-app-3.redis-headless.{0}.svc.cluster.local'.format(ns),
                 'port': port
             },
             {
-                'host': 'redis-app-4.redis-service.{0}.svc.cluster.local'.format(ns),
+                'host': 'redis-app-4.redis-headless.{0}.svc.cluster.local'.format(ns),
                 'port': port
             },
             {
-                'host': 'redis-app-5.redis-service.{0}.svc.cluster.local'.format(ns),
+                'host': 'redis-app-5.redis-headless.{0}.svc.cluster.local'.format(ns),
                 'port': port
             }
         ]

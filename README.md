@@ -12,7 +12,7 @@
 
 ## Version
 
-`Rev: 1.0.1`
+`Rev: 1.0.2`
 
 ---
 
@@ -76,12 +76,12 @@
     from rediscluster import RedisCluster
     def init_redis():
         startup_nodes = [
-            {'host': 'redis-app-0.redis-service.kube-ops.svc.cluster.local', 'port': 6379},
-            {'host': 'redis-app-1.redis-service.kube-ops.svc.cluster.local', 'port': 6379},
-            {'host': 'redis-app-2.redis-service.kube-ops.svc.cluster.local', 'port': 6379},
-            {'host': 'redis-app-3.redis-service.kube-ops.svc.cluster.local', 'port': 6379},
-            {'host': 'redis-app-4.redis-service.kube-ops.svc.cluster.local', 'port': 6379},
-            {'host': 'redis-app-5.redis-service.kube-ops.svc.cluster.local', 'port': 6379}
+            {'host': 'redis-app-0.redis-headless.kube-ops.svc.cluster.local', 'port': 6379},
+            {'host': 'redis-app-1.redis-headless.kube-ops.svc.cluster.local', 'port': 6379},
+            {'host': 'redis-app-2.redis-headless.kube-ops.svc.cluster.local', 'port': 6379},
+            {'host': 'redis-app-3.redis-headless.kube-ops.svc.cluster.local', 'port': 6379},
+            {'host': 'redis-app-4.redis-headless.kube-ops.svc.cluster.local', 'port': 6379},
+            {'host': 'redis-app-5.redis-headless.kube-ops.svc.cluster.local', 'port': 6379}
         ]
         try:
             conn = RedisCluster(startup_nodes=startup_nodes,
